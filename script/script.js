@@ -22,6 +22,8 @@ var popByState = d3.map();
 var scaleR = d3.scale.sqrt().range([5,130]),
     scaleColor = d3.scale.linear().domain([70,90]).range(['white','red']);
 
+
+
 //import data
 queue()
 	.defer(d3.json, "data/gz_2010_us_040_00_5m.json")
@@ -74,7 +76,7 @@ queue()
         nodes
             .append('text')
             .text(function(d){
-                return d.name;
+                return d.fullName;
             })
             .attr('text-anchor','middle');
 
@@ -83,11 +85,72 @@ queue()
         var force = d3.layout.force()
         //on "tick" event ...
 
-	});
 
+        force.nodes(data)
+            .size([width,height])
+            .charge(-150)
+            .gravity(0.1)
+            .on('tick',onForceTick)
+            .start();
+
+
+
+        function onForceTick(e){
+            var q = d3.geom.quadtree(data),
+                i = 0,
+                n = data.length;
+
+            while( ++i<n ){
+                q.visit(collide(data[i]));
+            }
+
+            nodes
+                .each(gravity(e.alpha*.1))
+                .each(collide(.1))
+                .attr('transform', function (d) {
+                    return 'translate(' + d.x + ',' + d.y + ')';
+                })
+
+            //k= e.alpha*.1  e.alpha changes from 1 to 0
+            function gravity(k){
+                //custom gravity: data points gravitate towards a straight line
+                return function(d){
+                    d.y += (d.y0 - d.y)*k;
+                    d.x += (d.x0 - d.x)*k;
+                }
+            }
+
+            function collide(dataPoint){
+                var nr = dataPoint.radius + 5,
+                    nx1 = dataPoint.x - nr,
+                    ny1 = dataPoint.y - nr,
+                    nx2 = dataPoint.x + nr,
+                    ny2 = dataPoint.y + nr;
+
+                return function(quadPoint,x1,y1,x2,y2){
+                    if(quadPoint.point && (quadPoint.point !== dataPoint)){
+                        var x = dataPoint.x - quadPoint.point.x,
+                            y = dataPoint.y - quadPoint.point.y,
+                            l = Math.sqrt(x*x+y*y),
+                            r = nr + quadPoint.point.radius;
+                        if(l<r){
+                            l = (l-r)/l*.1;
+                            dataPoint.x -= x*= (l*.05);
+                            dataPoint.y -= y*= l;
+                            quadPoint.point.x += (x*.05);
+                            quadPoint.point.y += y;
+                        }
+                    }
+                    return x1>nx2 || x2<nx1 || y1>ny2 || y2<ny1;
+                }
+            }
+
+        }
+    }
+);
 function parseData(d){
     //Use the parse function to populate the lookup table of states and their populations/% pop 18+
-
+   // name= d.NAME,
     popByState.set(d.STATE,{
         'pop':+d.POPESTIMATE2014,
         'pop18plus':+d.PCNT_POPEST18PLUS
